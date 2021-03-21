@@ -1,1 +1,1 @@
-# qkd_error_recon
+# QKD Simulations with Noise Models and Error Reconcillation  
