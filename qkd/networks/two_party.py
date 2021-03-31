@@ -62,6 +62,22 @@ def _generate_network(name, with_ent=False):
     return network
 
 
+class TwoPartyNoiselessNetworkWithEntanglement:
+    def __init__(self, name='noiseless-network-with-ent'):
+        self.name = name
+
+    def generate_network(self):
+        return _generate_network(self.name, True)
+
+
+class TwoPartyNoiselessNetwork:
+    def __init__(self, name='noiseless-network'):
+        self.name = name
+
+    def generate_network(self):
+        return _generate_network(self.name)
+
+
 class QubitConnection(Connection):
 
     def __init__(self, length, dephase_rate, loss=(0, 0), name='QubitConn'):
@@ -80,22 +96,6 @@ class QubitConnection(Connection):
                               forward_input=[('A', 'send')])
 
 
-class TwoPartyNoiselessNetworkWithEntanglement:
-    def __init__(self, name='noiseless-network-with-ent'):
-        self.name = name
-
-    def generate_network(self):
-        return _generate_network(self.name, True)
-
-
-class TwoPartyNoiselessNetwork:
-    def __init__(self, name='noiseless-network'):
-        self.name = name
-
-    def generate_network(self):
-        return _generate_network(self.name)
-
-
 class TwoPartyNetwork:
 
     def __init__(self, length=0, dephase_rate=0, memory_size=100, t_time=None, q_source_probs=(1., 0.), loss=(0, 0)):
@@ -109,7 +109,8 @@ class TwoPartyNetwork:
         self._q_source_probs = q_source_probs
         self._loss = loss
 
-    def _create_processor(self, dephase_rate, t_times, memory_size,
+    @staticmethod
+    def _create_processor(dephase_rate, t_times, memory_size,
                           add_qsource=False, q_source_probs=(1., 0.)):
 
         gate_noise_model = DephaseNoiseModel(dephase_rate, time_independent=False)
