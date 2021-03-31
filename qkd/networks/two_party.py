@@ -1,10 +1,65 @@
 import netsquid.components.instructions as instr
 import netsquid.qubits.ketstates as ks
+
 from netsquid.components import QuantumChannel, ClassicalChannel, FibreDelayModel, DephaseNoiseModel, \
     T1T2NoiseModel, QSource, SourceStatus, FibreLossModel
 from netsquid.components.qprocessor import QuantumProcessor, PhysicalInstruction
 from netsquid.nodes import Node, Network, Connection
 from netsquid.qubits import StateSampler
+
+
+def _create_processor(with_ent_source=False):
+    """Factory to create a quantum processor for each end node.
+
+    Has three memory positions and the physical instructions necessary
+    for teleportation.
+    """
+    physical_instructions = [
+        PhysicalInstruction(instr.INSTR_INIT, duration=3, parallel=True),
+        PhysicalInstruction(instr.INSTR_H, duration=1, parallel=True),
+        PhysicalInstruction(instr.INSTR_X, duration=1, parallel=True),
+        PhysicalInstruction(instr.INSTR_Z, duration=1, parallel=True),
+        PhysicalInstruction(instr.INSTR_MEASURE, duration=7, parallel=False),
+        PhysicalInstruction(instr.INSTR_MEASURE_X, duration=10, parallel=False)
+    ]
+    processor = QuantumProcessor("quantum_processor",
+                                 phys_instructions=physical_instructions)
+
+    if with_ent_source:
+        ent_source = QSource('ent_source',
+                             StateSampler([ks.b00]),
+                             num_ports=2,
+                             status=SourceStatus.OFF)
+        processor.add_subcomponent(ent_source,
+                                   name='ent_source')
+
+    return processor
+
+
+def _generate_network(name, with_ent=False):
+    network = Network(name)
+    alice = Node("alice", qmemory=_create_processor(with_ent))
+    bob = Node("bob", qmemory=_create_processor())
+
+    network.add_nodes([alice, bob])
+    p_ab, p_ba = network.add_connection(alice,
+                                        bob,
+                                        label="q_chan",
+                                        channel_to=QuantumChannel('AqB', delay=10),
+                                        channel_from=QuantumChannel('BqA', delay=10),
+                                        port_name_node1="qubitIO",
+                                        port_name_node2="qubitIO")
+
+    alice.ports[p_ab].forward_input(alice.qmemory.ports["qin0"])
+    bob.ports[p_ba].forward_input(bob.qmemory.ports["qin0"])
+    network.add_connection(alice,
+                           bob,
+                           label="c_chan",
+                           channel_to=ClassicalChannel('AcB', delay=10),
+                           channel_from=ClassicalChannel('BcA', delay=10),
+                           port_name_node1="classicIO",
+                           port_name_node2="classicIO")
+    return network
 
 
 class QubitConnection(Connection):
@@ -25,51 +80,20 @@ class QubitConnection(Connection):
                               forward_input=[('A', 'send')])
 
 
-class TwoPartyNoiselessNetwork:
-    @staticmethod
-    def _create_processor():
-        """Factory to create a quantum processor for each end node.
-
-        Has three memory positions and the physical instructions necessary
-        for teleportation.
-        """
-        physical_instructions = [
-            PhysicalInstruction(instr.INSTR_INIT, duration=3, parallel=True),
-            PhysicalInstruction(instr.INSTR_H, duration=1, parallel=True),
-            PhysicalInstruction(instr.INSTR_X, duration=1, parallel=True),
-            PhysicalInstruction(instr.INSTR_Z, duration=1, parallel=True),
-            PhysicalInstruction(instr.INSTR_MEASURE, duration=7, parallel=False),
-            PhysicalInstruction(instr.INSTR_MEASURE_X, duration=10, parallel=False)
-        ]
-        processor = QuantumProcessor("quantum_processor",
-                                     phys_instructions=physical_instructions)
-        return processor
+class TwoPartyNoiselessNetworkWithEntanglement:
+    def __init__(self, name='noiseless-network-with-ent'):
+        self.name = name
 
     def generate_network(self):
-        network = Network("BB84 Network")
-        alice = Node("alice", qmemory=self._create_processor())
-        bob = Node("bob", qmemory=self._create_processor())
+        return _generate_network(self.name, True)
 
-        network.add_nodes([alice, bob])
-        p_ab, p_ba = network.add_connection(alice,
-                                            bob,
-                                            label="q_chan",
-                                            channel_to=QuantumChannel('AqB', delay=10),
-                                            channel_from=QuantumChannel('BqA', delay=10),
-                                            port_name_node1="qubitIO",
-                                            port_name_node2="qubitIO")
-        # Map the qubit input port from the above channel to the memory index 0 on Bob"s
-        # side
-        alice.ports[p_ab].forward_input(alice.qmemory.ports["qin0"])
-        bob.ports[p_ba].forward_input(bob.qmemory.ports["qin0"])
-        network.add_connection(alice,
-                               bob,
-                               label="c_chan",
-                               channel_to=ClassicalChannel('AcB', delay=10),
-                               channel_from=ClassicalChannel('BcA', delay=10),
-                               port_name_node1="classicIO",
-                               port_name_node2="classicIO")
-        return network
+
+class TwoPartyNoiselessNetwork:
+    def __init__(self, name='noiseless-network'):
+        self.name = name
+
+    def generate_network(self):
+        return _generate_network(self.name)
 
 
 class TwoPartyNetwork:

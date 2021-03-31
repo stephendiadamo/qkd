@@ -1,16 +1,13 @@
 import time
 
+import matplotlib.pyplot as plt
 import netsquid as ns
 import netsquid.components.instructions as instr
 import numpy as np
-from netsquid.components import QuantumChannel, QuantumProgram, ClassicalChannel, FibreDelayModel, DephaseNoiseModel, \
-    T1T2NoiseModel, QSource, SourceStatus, FibreLossModel
-from netsquid.components.qprocessor import QuantumProcessor, PhysicalInstruction
-from netsquid.nodes import Node, Network, Connection
+from netsquid.components import QuantumProgram, SourceStatus
 from netsquid.protocols import NodeProtocol, Signals
-from netsquid.qubits import StateSampler
-import netsquid.qubits.ketstates as ks
-import matplotlib.pyplot as plt
+
+from qkd.networks import TwoPartyNetwork
 
 bob_keys = []
 alice_keys = []
@@ -155,103 +152,6 @@ class KeySenderProtocol(NodeProtocol):
         self.send_signal(signal_label=Signals.SUCCESS, result=final_key)
 
 
-def create_processor(dephase_rate, t_times, memory_size, add_qsource=False, q_source_probs=[1., 0.]):
-    """Factory to create a quantum processor for each end node.
-
-    Has three memory positions and the physical instructions necessary
-    for teleportation.
-    """
-
-    gate_noise_model = DephaseNoiseModel(dephase_rate, time_independent=False)
-    memory_noise_model = T1T2NoiseModel(T1=t_times['T1'], T2=t_times['T2'])
-
-    physical_instructions = [
-        PhysicalInstruction(instr.INSTR_INIT,
-                            duration=1,
-                            parallel=False,
-                            q_noise_model=gate_noise_model),
-        PhysicalInstruction(instr.INSTR_H,
-                            duration=1,
-                            parallel=False,
-                            q_noise_model=gate_noise_model),
-        PhysicalInstruction(instr.INSTR_X,
-                            duration=1,
-                            parallel=False,
-                            q_noise_model=gate_noise_model),
-        PhysicalInstruction(instr.INSTR_Z,
-                            duration=1,
-                            parallel=False,
-                            q_noise_model=gate_noise_model),
-        PhysicalInstruction(instr.INSTR_MEASURE,
-                            duration=10,
-                            parallel=False,
-                            q_noise_model=gate_noise_model),
-        PhysicalInstruction(instr.INSTR_MEASURE_X,
-                            duration=10,
-                            parallel=False,
-                            q_noise_model=gate_noise_model)
-    ]
-    processor = QuantumProcessor("quantum_processor",
-                                 num_positions=memory_size,
-                                 mem_noise_models=[memory_noise_model] * memory_size,
-                                 phys_instructions=physical_instructions)
-    if add_qsource:
-        qubit_source = QSource('qubit_source',
-                               StateSampler([ks.s0, ks.s1], q_source_probs),
-                               num_ports=1,
-                               status=SourceStatus.OFF)
-        processor.add_subcomponent(qubit_source,
-                                   name='qubit_source')
-    return processor
-
-
-class QubitConnection(Connection):
-    def __init__(self, length, dephase_rate, loss=(0, 0), name='QubitConn'):
-        super().__init__(name=name)
-        error_models = {'quantum_noise_model': DephaseNoiseModel(dephase_rate=dephase_rate,
-                                                                 time_independent=False),
-                        'delay_model': FibreDelayModel(length=length),
-                        'quantum_loss_model': FibreLossModel(p_loss_init=loss[0], p_loss_length=loss[1])
-                        }
-        q_channel = QuantumChannel(name='q_channel',
-                                   length=length,
-                                   models=error_models
-                                   )
-        self.add_subcomponent(q_channel,
-                              forward_output=[('B', 'recv')],
-                              forward_input=[('A', 'send')])
-
-
-def generate_network(node_distance=1e3, dephase_rate=0.2, key_size=15, t_time=None,
-                     q_source_probs=(1., 0.), loss=(0, 0)):
-    """
-    Generate the network. For BB84, we need a quantum and classical channel.
-    """
-    if t_time is None:
-        t_time = {'T1': 11, 'T2': 10}
-
-    network = Network("BB84 Network")
-    alice = Node("alice", qmemory=create_processor(dephase_rate, t_time, key_size, add_qsource=True,
-                                                   q_source_probs=q_source_probs))
-    bob = Node("bob", qmemory=create_processor(dephase_rate, t_time, key_size))
-    network.add_nodes([alice, bob])
-    q_conn = QubitConnection(length=node_distance, dephase_rate=dephase_rate, loss=loss)
-    network.add_connection(alice,
-                           bob,
-                           label='q_chan',
-                           connection=q_conn,
-                           port_name_node1='qubitIO',
-                           port_name_node2='qubitIO')
-    network.add_connection(alice,
-                           bob,
-                           label="c_chan",
-                           channel_to=ClassicalChannel('AcB', delay=10),
-                           channel_from=ClassicalChannel('BcA', delay=10),
-                           port_name_node1="classicIO",
-                           port_name_node2="classicIO")
-    return network
-
-
 def run_experiment(fibre_length, dephase_rate, key_size, t_time=None, runs=100, q_source_probs=(1., 0.), loss=(0, 0)):
     if t_time is None:
         t_time = {'T1': 10001, 'T2': 10000}
@@ -264,7 +164,7 @@ def run_experiment(fibre_length, dephase_rate, key_size, t_time=None, runs=100, 
     for _ in range(runs):
         ns.sim_reset()
 
-        n = generate_network(fibre_length, dephase_rate, key_size, t_time, q_source_probs, loss)
+        n = TwoPartyNetwork(fibre_length, dephase_rate, key_size, t_time, q_source_probs, loss).generate_network()
         node_a = n.get_node("alice")
         node_b = n.get_node("bob")
         p1 = KeySenderProtocol(node_a, key_size=key_size)
@@ -383,7 +283,7 @@ if __name__ == '__main__':
     start = time.time()
     # plot_fibre_length_experiment()
     # plot_loss_experiment(runs=300)
-    plot_key_length_vs_length(runs=200)
+    plot_key_length_vs_length(runs=2)
     print(f'Finished in {time.time() - start} seconds.')
 
     # print(run_experiment(fibre_length=100,
