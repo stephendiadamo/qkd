@@ -34,7 +34,7 @@ class KeyReceiverProtocol(NodeProtocol):
     Protocol for the receiver of the key.
     """
 
-    def __init__(self, node, key_size=10, port_names=("qubitIO", "classicIO")):
+    def __init__(self, node, key_size=100, port_names=("qubitIO", "classicIO")):
         super().__init__(node)
         self.node = node
         self.q_port = port_names[0]
@@ -46,6 +46,7 @@ class KeyReceiverProtocol(NodeProtocol):
         # Select random bases
         bases = np.random.randint(2, size=self.key_size)
         results = []
+        kept_indices = []
         for i in range(self.key_size):
             # Await a qubit from Alice
             yield self.await_port_input(self.node.ports[self.q_port])
@@ -54,25 +55,23 @@ class KeyReceiverProtocol(NodeProtocol):
                 res = self.node.qmemory.execute_instruction(instr.INSTR_MEASURE, output_key="M")
             else:
                 res = self.node.qmemory.execute_instruction(instr.INSTR_MEASURE_X, output_key="M")
+
             yield self.await_program(self.node.qmemory)
             if res[0]['M'][0] == 1:
+                kept_indices.append(i)
                 if bases[i] == 0:
                     results.append(1)
                 else:
                     results.append(0)
+
             self.node.qmemory.reset()
 
             # Send ACK to Alice to trigger next qubit send (except in last transmit)
             if i < self.key_size - 1:
                 self.node.ports[self.c_port].tx_output('ACK')
 
-        # All qubits arrived, send bases
-
-
-        # Await matched indices from Alice and process key
-
-
         self.key = results
+        self.node.ports[self.c_port].tx_output(kept_indices)
         self.send_signal(signal_label=Signals.SUCCESS, result=results)
 
 
@@ -81,7 +80,7 @@ class KeySenderProtocol(NodeProtocol):
     Protocol for the sender of the key.
     """
 
-    def __init__(self, node, key_size=10, port_names=("qubitIO", "classicIO")):
+    def __init__(self, node, key_size=100, port_names=("qubitIO", "classicIO")):
         super().__init__(node)
         self.node = node
         self.q_port = port_names[0]
@@ -107,7 +106,13 @@ class KeySenderProtocol(NodeProtocol):
             if i < self.key_size - 1:
                 yield self.await_port_input(self.node.ports[self.c_port])
 
-        self.send_signal(signal_label=Signals.SUCCESS, result=None)
+        yield self.await_port_input(self.node.ports[self.c_port])
+        kept_indices = self.node.ports[self.c_port].rx_input().items
+        final_key = []
+        for i in kept_indices:
+            final_key.append(secret_key[i])
+        self.key = final_key
+        self.send_signal(signal_label=Signals.SUCCESS, result=final_key)
 
 
 def create_processor():
@@ -164,11 +169,13 @@ if __name__ == '__main__':
     node_a = n.get_node("alice")
     node_b = n.get_node("bob")
 
-    p1 = KeySenderProtocol(node_a, key_size=15)
-    p2 = KeyReceiverProtocol(node_b, key_size=15)
+    p1 = KeySenderProtocol(node_a, key_size=100)
+    p2 = KeyReceiverProtocol(node_b, key_size=100)
 
     p1.start()
     p2.start()
 
     stats = ns.sim_run()
+
+    print(p1.key)
     print(p2.key)
