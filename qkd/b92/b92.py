@@ -177,5 +177,6 @@ if __name__ == '__main__':
 
     stats = ns.sim_run()
 
+    print(len(p1.key))
     print(p1.key)
     print(p2.key)

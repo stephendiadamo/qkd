@@ -174,13 +174,14 @@ if __name__ == '__main__':
     node_a = n.get_node("alice")
     node_b = n.get_node("bob")
 
-    p1 = KeySenderProtocol(node_a, key_size=15)
-    p2 = KeyReceiverProtocol(node_b, key_size=15)
+    p1 = KeySenderProtocol(node_a, key_size=100)
+    p2 = KeyReceiverProtocol(node_b, key_size=100)
 
     p1.start()
     p2.start()
 
     stats = ns.sim_run()
 
+    print(len(p1.key))
     print(p1.key)
     print(p2.key)
