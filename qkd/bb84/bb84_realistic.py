@@ -8,6 +8,7 @@ from netsquid.components import QuantumProgram, SourceStatus
 from netsquid.protocols import NodeProtocol, Signals
 
 from qkd.networks import TwoPartyNetwork
+from reconciliation import cascade
 
 bob_keys = []
 alice_keys = []
