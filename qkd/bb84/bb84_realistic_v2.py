@@ -63,28 +63,28 @@ class KeyReceiverProtocol(NodeProtocol):
         # Select random bases
         bases = np.random.randint(2, size=self.key_size)
         results = []
-        i = 0
+        qubits_received = 0
 
         def record_measurement(measure_program):
             measurement_result = measure_program.output['M'][0]
             results.append(measurement_result)
 
         def measure_qubit(message):
-            self.node.qmemory.put(message.items[0], positions=[i])
-            measure_program = RandomMeasurement(bases[i])
+            nonlocal qubits_received
+            self.node.qmemory.put(message.items[0], positions=[0])
+            measure_program = RandomMeasurement(bases[qubits_received])
             self.node.qmemory.set_program_done_callback(record_measurement, measure_program=measure_program, once=False)
-            self.node.qmemory.execute_program(measure_program, qubit_mapping=[i])
+            self.node.qmemory.execute_program(measure_program, qubit_mapping=[0])
+            qubits_received += 1
 
-        # Not sure why this timer has to have a huge number...
-        delay_timer = 200000000
-        for i in range(self.key_size):
-            # Await a qubit from Alice
-            self.node.ports[self.q_port].forward_input(self.node.qmemory.ports[f"qin{i}"])
-            self.node.qmemory.ports[f"qin{i}"].bind_input_handler(measure_qubit)
-            yield self.await_port_input(self.node.ports[self.q_port]) | self.await_timer(delay_timer)
+        self.node.ports[self.q_port].forward_input(self.node.qmemory.ports["qin0"])
+        self.node.qmemory.ports["qin0"].bind_input_handler(measure_qubit)
 
-        yield self.await_program(self.node.qmemory) | self.await_timer(delay_timer)
-        # All qubits arrived, send bases
+        # Await done signal from Alice
+        yield self.await_port_input(self.node.ports[self.c_port])
+        print(len(results))
+
+        # All qubits sent, send bases back
         self.node.ports[self.c_port].tx_output(bases)
 
         # Await matched indices from Alice and process key
@@ -119,8 +119,8 @@ class KeySenderProtocol(NodeProtocol):
         secret_key = np.random.randint(2, size=self.key_size)
         bases = list(np.random.randint(2, size=self.key_size))
 
-        self.node.qmemory.subcomponents['qubit_source'].status = SourceStatus.INTERNAL
         # Transmit encoded qubits to Bob
+        self.node.qmemory.subcomponents['qubit_source'].status = SourceStatus.INTERNAL
         for i, bit in enumerate(secret_key):
             # Await a qubit
             yield self.await_port_output(self.node.qmemory.subcomponents['qubit_source'].ports['qout0'])
@@ -131,6 +131,7 @@ class KeySenderProtocol(NodeProtocol):
             self.node.qmemory.pop(0)
             self.node.ports[self.q_port].tx_output(self.node.qmemory.ports['qout'].rx_output())
         self.node.qmemory.subcomponents['qubit_source'].status = SourceStatus.OFF
+        self.node.ports[self.c_port].tx_output('DONE')
 
         # Await response from Bob
         yield self.await_port_input(self.node.ports[self.c_port])
@@ -140,9 +141,9 @@ class KeySenderProtocol(NodeProtocol):
             if bob_bases[i] == bases[i]:
                 matched_indices.append(i)
 
-        self.node.ports[self.c_port].tx_output(matched_indices)
+        self.node.ports[self.c_port].tx_output(matched_indices[:-1])
         final_key = []
-        for i in matched_indices:
+        for i in matched_indices[:-1]:
             final_key.append(secret_key[i])
         self.key = final_key
         global alice_keys
@@ -192,102 +193,13 @@ def run_experiment(fibre_length, dephase_rate, key_size, t_time=None, runs=100, 
     return _stats
 
 
-def plot_fibre_length_experiment(runs=100):
-    lengths = np.linspace(100, 1000, 4)
-    phases = np.linspace(0, 0.5, 4)
-    for phase in phases:
-        data = []
-        for length in lengths:
-            print(f'Running l={length}, p={phase}')
-            ns.sim_reset()
-            data.append(run_experiment(fibre_length=length,
-                                       dephase_rate=phase,
-                                       key_size=50,
-                                       runs=runs,
-                                       t_time={'T1': 11, 'T2': 10},
-                                       q_source_probs=[1., 0.]))
-        correct_keys = [d['MATCHED_KEYS'] / runs for d in data]
-        plt.plot([l / 1000 for l in lengths], correct_keys,
-                 marker='.',
-                 linestyle='solid',
-                 label=f'Dephase Rate={phase}')
-        plt.legend()
-        plt.title('Key Distribution Efficiency Over Fibre')
-        plt.ylim(0, 1.1)
-        plt.xlabel('Length (km)')
-        plt.ylabel('Percentage of correctly transmitted keys')
-    plt.show()
-
-
-def plot_loss_experiment(runs=100):
-    lengths = np.linspace(0, 10, 6)
-    losses = np.linspace(0, 0.01, 5)
-    for loss in losses:
-        data = []
-        for length in lengths:
-            print(f'Running l={length}, p_loss={loss}')
-            ns.sim_reset()
-            data.append(run_experiment(fibre_length=length,
-                                       dephase_rate=0,
-                                       key_size=25,
-                                       runs=runs,
-                                       t_time={'T1': 11, 'T2': 10},
-                                       q_source_probs=[1., 0.],
-                                       loss=(0, loss)),
-                        )
-        correct_keys = [d['MATCHED_KEYS'] / runs for d in data]
-        plt.plot([l / 1000 for l in lengths], correct_keys,
-                 marker='.',
-                 linestyle='solid',
-                 label=f'Loss Rate={loss}')
-        plt.legend()
-        plt.title('Key Distribution Efficiency Over Fibre')
-        plt.ylim(0, 1.1)
-        plt.xlabel('Length (km)')
-        plt.ylabel('Percentage of correctly transmitted keys')
-    plt.show()
-
-
-def plot_key_length_vs_length(runs=100):
-    lengths = np.linspace(0, 10, 5)
-    sizes = np.linspace(15, 100, 4, dtype=int)
-    for size in sizes:
-        data = []
-        for length in lengths:
-            print(f'Running l={length}, size={size}')
-            ns.sim_reset()
-            data.append(run_experiment(fibre_length=length,
-                                       dephase_rate=0,
-                                       key_size=size,
-                                       runs=runs,
-                                       t_time={'T1': 11, 'T2': 10},
-                                       q_source_probs=[1., 0.],
-                                       loss=(0, 0.01)),
-                        )
-        correct_keys = [d['MATCHED_KEYS'] / runs for d in data]
-        plt.plot([l / 1000 for l in lengths], correct_keys,
-                 marker='.',
-                 linestyle='solid',
-                 label=f'Key Size={size}')
-        plt.legend()
-        plt.title('Key Distribution Efficiency Over Fibre')
-        plt.ylim(0, 1.1)
-        plt.xlabel('Length (km)')
-        plt.ylabel('Percentage of correctly transmitted keys')
-    plt.show()
-
-
 if __name__ == '__main__':
     start = time.time()
-    # plot_fibre_length_experiment()
-    # plot_loss_experiment(runs=300)
-    plot_key_length_vs_length(runs=2)
+    print(run_experiment(fibre_length=100,
+                         dephase_rate=0,
+                         key_size=200,
+                         runs=1,
+                         t_time={'T1': 11, 'T2': 10},
+                         q_source_probs=[1., 0.],
+                         loss=(0.01, 0.01)))
     print(f'Finished in {time.time() - start} seconds.')
-
-    # print(run_experiment(fibre_length=100,
-    #                      dephase_rate=0,
-    #                      key_size=20,
-    #                      runs=100,
-    #                      t_time={'T1': 11, 'T2': 10},
-    #                      q_source_probs=[1., 0.],
-    #                      loss=(0.000005, 0.000005)))

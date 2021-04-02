@@ -85,15 +85,11 @@ class QubitConnection(Connection):
         error_models = {'quantum_noise_model': DephaseNoiseModel(dephase_rate=dephase_rate,
                                                                  time_independent=False),
                         'delay_model': FibreDelayModel(length=length),
-                        'quantum_loss_model': FibreLossModel(p_loss_init=loss[0], p_loss_length=loss[1])
+                        'quantum_loss_model': FibreLossModel(p_loss_init=loss[0],
+                                                             p_loss_length=loss[1])
                         }
-        q_channel = QuantumChannel(name='q_channel',
-                                   length=length,
-                                   models=error_models
-                                   )
-        self.add_subcomponent(q_channel,
-                              forward_output=[('B', 'recv')],
-                              forward_input=[('A', 'send')])
+        q_channel = QuantumChannel(name='q_channel', length=length, models=error_models)
+        self.add_subcomponent(q_channel, forward_output=[('B', 'recv')], forward_input=[('A', 'send')])
 
 
 class TwoPartyNetwork:
