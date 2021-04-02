@@ -2,10 +2,10 @@ import netsquid.components.instructions as instr
 import netsquid.qubits.ketstates as ks
 
 from netsquid.components import QuantumChannel, ClassicalChannel, FibreDelayModel, DephaseNoiseModel, \
-    T1T2NoiseModel, QSource, SourceStatus, FibreLossModel
+    T1T2NoiseModel, QSource, SourceStatus, FibreLossModel, QuantumDetector
 from netsquid.components.qprocessor import QuantumProcessor, PhysicalInstruction
 from netsquid.nodes import Node, Network, Connection
-from netsquid.qubits import StateSampler
+from netsquid.qubits import StateSampler, operators as ops
 
 
 def _create_processor(with_ent_source=False):
@@ -106,8 +106,7 @@ class TwoPartyNetwork:
         self._loss = loss
 
     @staticmethod
-    def _create_processor(dephase_rate, t_times, memory_size,
-                          add_qsource=False, q_source_probs=(1., 0.)):
+    def _create_processor(dephase_rate, t_times, memory_size, qsource=None, qdetect=None):
 
         gate_noise_model = DephaseNoiseModel(dephase_rate, time_independent=False)
         memory_noise_model = T1T2NoiseModel(T1=t_times['T1'], T2=t_times['T2'])
@@ -142,13 +141,25 @@ class TwoPartyNetwork:
                                      num_positions=memory_size,
                                      mem_noise_models=[memory_noise_model] * memory_size,
                                      phys_instructions=physical_instructions)
-        if add_qsource:
+        if qsource is not None:
             qubit_source = QSource('qubit_source',
-                                   StateSampler([ks.s0, ks.s1], list(q_source_probs)),
+                                   StateSampler([ks.s0, ks.s1], list(qsource['probs'])),
+                                   double_frequency=qsource['freq'],
                                    num_ports=1,
                                    status=SourceStatus.OFF)
-            processor.add_subcomponent(qubit_source,
-                                       name='qubit_source')
+            processor.add_subcomponent(qubit_source)
+
+        if qdetect is not None:
+            qubit_detector_z = QuantumDetector('qubit_detector_z',
+                                               system_delay=qdetect['sys_delay'],
+                                               dead_time=qdetect['dead_time'])
+            qubit_detector_x = QuantumDetector('qubit_detector_x',
+                                               system_delay=qdetect['sys_delay'],
+                                               dead_time=qdetect['dead_time'],
+                                               observable=ops.X)
+            processor.add_subcomponent(qubit_detector_z)
+            processor.add_subcomponent(qubit_detector_x)
+
         return processor
 
     def generate_network(self):
@@ -162,14 +173,14 @@ class TwoPartyNetwork:
             qmemory=self._create_processor(self._dephase_rate,
                                            self._t_time,
                                            self._memory_size,
-                                           add_qsource=True,
-                                           q_source_probs=self._q_source_probs))
+                                           qsource={'freq': 100, 'probs': self._q_source_probs}))
         bob = Node(
             "bob",
             qmemory=self._create_processor(
                 self._dephase_rate,
                 self._t_time,
-                self._memory_size))
+                self._memory_size,
+                qdetect={'sys_delay': 0, 'dead_time': 0}))
         network.add_nodes([alice, bob])
 
         q_conn = QubitConnection(

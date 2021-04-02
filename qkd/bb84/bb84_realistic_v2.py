@@ -1,6 +1,5 @@
 import time
 
-import matplotlib.pyplot as plt
 import netsquid as ns
 import netsquid.components.instructions as instr
 import numpy as np
@@ -32,20 +31,6 @@ class EncodeQubitProgram(QuantumProgram):
         yield self.run()
 
 
-class RandomMeasurement(QuantumProgram):
-    def __init__(self, base):
-        super().__init__()
-        self.base = base
-
-    def program(self):
-        q1, = self.get_qubit_indices(1)
-        if self.base == 0:
-            self.apply(instr.INSTR_MEASURE, q1, output_key="M")
-        elif self.base == 1:
-            self.apply(instr.INSTR_MEASURE_X, q1, output_key="M")
-        yield self.run()
-
-
 class KeyReceiverProtocol(NodeProtocol):
     """
     Protocol for the receiver of the key.
@@ -65,24 +50,24 @@ class KeyReceiverProtocol(NodeProtocol):
         results = []
         qubits_received = 0
 
-        def record_measurement(measure_program):
-            measurement_result = measure_program.output['M'][0]
-            results.append(measurement_result)
+        def record_measurement(msg):
+            results.append(msg.items[0])
 
         def measure_qubit(message):
             nonlocal qubits_received
-            self.node.qmemory.put(message.items[0], positions=[0])
-            measure_program = RandomMeasurement(bases[qubits_received])
-            self.node.qmemory.set_program_done_callback(record_measurement, measure_program=measure_program, once=False)
-            self.node.qmemory.execute_program(measure_program, qubit_mapping=[0])
+            if bases[qubits_received] == 0:
+                self.node.qmemory.subcomponents['qubit_detector_z'].ports['qin0'].tx_input(message)
+            else:
+                self.node.qmemory.subcomponents['qubit_detector_x'].ports['qin0'].tx_input(message)
             qubits_received += 1
 
         self.node.ports[self.q_port].forward_input(self.node.qmemory.ports["qin0"])
         self.node.qmemory.ports["qin0"].bind_input_handler(measure_qubit)
+        self.node.qmemory.subcomponents['qubit_detector_z'].ports['cout0'].bind_output_handler(record_measurement)
+        self.node.qmemory.subcomponents['qubit_detector_x'].ports['cout0'].bind_output_handler(record_measurement)
 
         # Await done signal from Alice
         yield self.await_port_input(self.node.ports[self.c_port])
-        print(len(results))
 
         # All qubits sent, send bases back
         self.node.ports[self.c_port].tx_output(bases)
@@ -131,6 +116,8 @@ class KeySenderProtocol(NodeProtocol):
             self.node.qmemory.pop(0)
             self.node.ports[self.q_port].tx_output(self.node.qmemory.ports['qout'].rx_output())
         self.node.qmemory.subcomponents['qubit_source'].status = SourceStatus.OFF
+
+        # Signal end of transmission
         self.node.ports[self.c_port].tx_output('DONE')
 
         # Await response from Bob
@@ -198,8 +185,8 @@ if __name__ == '__main__':
     print(run_experiment(fibre_length=100,
                          dephase_rate=0,
                          key_size=200,
-                         runs=1,
+                         runs=10,
                          t_time={'T1': 11, 'T2': 10},
                          q_source_probs=[1., 0.],
-                         loss=(0.01, 0.01)))
+                         loss=(0.001, 0.000)))
     print(f'Finished in {time.time() - start} seconds.')
