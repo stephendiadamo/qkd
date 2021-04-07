@@ -13,10 +13,14 @@ bob_corrected_keys = []
 
 def run_bb84_experiment():
     protocols = [BB84Sender, BB84Receiver]
+
     return run_experiment(protocols,
-                          fibre_length=10,
-                          dephase_rate=0,
-                          key_size=100,
+                          fibre_length=25000,
+                          dephase_rate=0.5,
+                          t_time={'T1': 11, 'T2': 10},
+                          key_size=300,
+                          q_source_probs=[1., 0.],
+                          # loss=(0.001, 0.0001),
                           runs=10)
 
 
@@ -124,7 +128,7 @@ def plot_fibre_length_experiment(protocols, runs=100):
 def run_experiment(protocols, fibre_length, dephase_rate, key_size, t_time=None, runs=100, q_source_probs=(1., 0.),
                    loss=(0, 0)):
     if t_time is None:
-        t_time = {'T1': 10001, 'T2': 10000}
+        t_time = {'T1': 11, 'T2': 10}
 
     global bob_keys, alice_keys, bob_corrected_keys
     bob_keys = []
@@ -133,15 +137,20 @@ def run_experiment(protocols, fibre_length, dephase_rate, key_size, t_time=None,
 
     for _ in range(runs):
         ns.sim_reset()
-
-        n = TwoPartyNetwork('network', fibre_length, dephase_rate, key_size, t_time, q_source_probs,
+        # ns.logger.setLevel(1)
+        n = TwoPartyNetwork('network',
+                            fibre_length,
+                            dephase_rate,
+                            key_size,
+                            t_time,
+                            q_source_probs,
                             loss).generate_noisy_network()
 
         node_a = n.get_node("alice")
         node_b = n.get_node("bob")
+
         p1 = protocols[0](node_a, key_size=key_size)
         p2 = protocols[1](node_b, key_size=key_size)
-
         p1.start()
         p2.start()
 
@@ -157,7 +166,10 @@ def run_experiment(protocols, fibre_length, dephase_rate, key_size, t_time=None,
         c2.start()
 
         ns.sim_run()
-        bob_corrected_keys.append(c2.corrected_key)
+        # print(p1.key)
+        # print(p2.key)
+        # print(c2.cor_key)
+        bob_corrected_keys.append(c2.cor_key)
 
     def keys_match(key1, key2):
         if len(key1) != len(key2):

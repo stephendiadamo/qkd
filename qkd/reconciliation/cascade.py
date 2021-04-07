@@ -1,10 +1,9 @@
 import netsquid as ns
 from netsquid.components import ClassicalChannel
-from netsquid.nodes import Node, Network, Connection
+from netsquid.nodes import Node, Network
 
 import numpy as np
 from netsquid.protocols import NodeProtocol, Signals
-import matplotlib.pyplot as plt
 
 
 def next_pow_2(n):
@@ -67,7 +66,7 @@ class ReceiverProtocol(NodeProtocol):
         self.blocks = [blocksizes * 2 ** i for i in range(self.passes)]
         if key is not None:
             self._key = key
-            self.corrected_key = np.copy(key)
+            self._corrected_key = np.copy(key)
             self.cur_order = list(range(len(self.corrected_key)))
 
     @property
@@ -79,6 +78,18 @@ class ReceiverProtocol(NodeProtocol):
         self._key = k
         self.corrected_key = np.copy(self._key)
         self.cur_order = list(range(len(self.corrected_key)))
+
+    @property
+    def corrected_key(self):
+        return self._corrected_key
+
+    @property
+    def cor_key(self):
+        return list(self._corrected_key)
+
+    @corrected_key.setter
+    def corrected_key(self, key):
+        self._corrected_key = key
 
     def get_cur_block(self, block_length, iteration):
         if len(self.cur_order) >= (iteration + 1) * block_length:
@@ -158,4 +169,4 @@ if __name__ == "__main__":
     p2.start()
 
     stats = ns.sim_run()
-    print(sum(np.bitwise_xor(p2.corrected_key, key)))
+    print(sum(np.bitwise_xor(np.array(p2.corrected_key), key)))

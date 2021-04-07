@@ -31,7 +31,7 @@ class TwoPartyNetwork:
         self._dephase_rate = dephase_rate
         self._memory_size = memory_size
         if t_time is None:
-            self._t_time = {'T1': 10001, 'T2': 10000}
+            self._t_time = {'T1': 11, 'T2': 10}
         else:
             self._t_time = t_time
         self._q_source_probs = q_source_probs
@@ -162,10 +162,16 @@ class TwoPartyNetwork:
         network = Network("Noisy Network")
         alice = Node(
             "alice",
-            qmemory=self._create_processor(self._dephase_rate,
-                                           self._t_time,
-                                           self._memory_size,
-                                           qsource={'freq': 100, 'probs': self._q_source_probs}))
+            qmemory=self._create_processor(
+                self._dephase_rate,
+                self._t_time,
+                self._memory_size,
+                qsource={
+                    'freq': 1,
+                    'probs': self._q_source_probs
+                }
+            )
+        )
         bob = Node(
             "bob",
             qmemory=self._create_processor(

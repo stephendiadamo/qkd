@@ -8,9 +8,6 @@ from netsquid.protocols import NodeProtocol, Signals
 
 from qkd.networks import TwoPartyNetwork
 
-bob_keys = []
-alice_keys = []
-
 
 class EncodeQubitProgram(QuantumProgram):
     """
@@ -63,6 +60,7 @@ class KeyReceiverProtocol(NodeProtocol):
 
         self.node.ports[self.q_port].forward_input(self.node.qmemory.ports["qin0"])
         self.node.qmemory.ports["qin0"].bind_input_handler(measure_qubit)
+
         self.node.qmemory.subcomponents['qubit_detector_z'].ports['cout0'].bind_output_handler(record_measurement)
         self.node.qmemory.subcomponents['qubit_detector_x'].ports['cout0'].bind_output_handler(record_measurement)
 
@@ -70,7 +68,7 @@ class KeyReceiverProtocol(NodeProtocol):
         yield self.await_port_input(self.node.ports[self.c_port])
 
         # All qubits sent, send bases back
-        self.node.ports[self.c_port].tx_output(bases)
+        self.node.ports[self.c_port].tx_output(bases[:len(results)])
 
         # Await matched indices from Alice and process key
         yield self.await_port_input(self.node.ports[self.c_port])
@@ -82,8 +80,6 @@ class KeyReceiverProtocol(NodeProtocol):
                 final_key.append(results[i])
 
         self.key = final_key
-        global bob_keys
-        bob_keys.append(final_key)
         self.send_signal(signal_label=Signals.SUCCESS, result=final_key)
 
 
@@ -124,7 +120,7 @@ class KeySenderProtocol(NodeProtocol):
         yield self.await_port_input(self.node.ports[self.c_port])
         bob_bases = self.node.ports[self.c_port].rx_input().items[0]
         matched_indices = []
-        for i in range(self.key_size):
+        for i in range(len(bob_bases)):
             if bob_bases[i] == bases[i]:
                 matched_indices.append(i)
 
@@ -133,8 +129,6 @@ class KeySenderProtocol(NodeProtocol):
         for i in matched_indices[:-1]:
             final_key.append(secret_key[i])
         self.key = final_key
-        global alice_keys
-        alice_keys.append(final_key)
         self.send_signal(signal_label=Signals.SUCCESS, result=final_key)
 
 
