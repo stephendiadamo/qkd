@@ -1,8 +1,10 @@
 import netsquid as ns
 import numpy as np
 import matplotlib.pyplot as plt
+
 from qkd.networks import TwoPartyNetwork
-from qkd.protocols import KeySenderProtocol as BB84Sender, KeyReceiverProtocol as BB84Receiver
+from qkd.protocols.bb84 import KeySenderProtocol as BB84Sender, KeyReceiverProtocol as BB84Receiver
+from qkd.reconciliation import cascade
 
 bob_keys = []
 alice_keys = []
@@ -132,7 +134,8 @@ def run_experiment(protocols, fibre_length, dephase_rate, key_size, t_time=None,
     for _ in range(runs):
         ns.sim_reset()
 
-        n = TwoPartyNetwork(fibre_length, dephase_rate, key_size, t_time, q_source_probs, loss).generate_noisy_network()
+        n = TwoPartyNetwork('network', fibre_length, dephase_rate, key_size, t_time, q_source_probs,
+                            loss).generate_noisy_network()
 
         node_a = n.get_node("alice")
         node_b = n.get_node("bob")
@@ -147,8 +150,8 @@ def run_experiment(protocols, fibre_length, dephase_rate, key_size, t_time=None,
         alice_keys.append(p1.key)
         bob_keys.append(p2.key)
 
-        c1 = qkd.reconciliation.cascade.SenderProtocol(node_a, key=alice_keys[-1])
-        c2 = qkd.reconciliation.cascade.ReceiverProtocol(node_b, key=bob_keys[-1])
+        c1 = cascade.SenderProtocol(node_a, key=alice_keys[-1])
+        c2 = cascade.ReceiverProtocol(node_b, key=bob_keys[-1])
 
         c1.start()
         c2.start()
@@ -180,4 +183,4 @@ def run_experiment(protocols, fibre_length, dephase_rate, key_size, t_time=None,
 
 
 if __name__ == "__main__":
-    print(run_b92_experiment())
+    print(run_bb84_experiment())
