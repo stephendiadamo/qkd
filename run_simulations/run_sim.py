@@ -1,9 +1,8 @@
 import netsquid as ns
 import numpy as np
 import matplotlib.pyplot as plt
-import reconciliation
-from networks import TwoPartyNetwork
-from qkd_protocols.bb84 import KeySenderProtocol as BB84Sender, KeyReceiverProtocol as BB84Receiver
+from qkd.networks import TwoPartyNetwork
+from qkd.protocols import KeySenderProtocol as BB84Sender, KeyReceiverProtocol as BB84Receiver
 
 bob_keys = []
 alice_keys = []
@@ -148,8 +147,8 @@ def run_experiment(protocols, fibre_length, dephase_rate, key_size, t_time=None,
         alice_keys.append(p1.key)
         bob_keys.append(p2.key)
 
-        c1 = reconciliation.cascade.SenderProtocol(node_a, key=alice_keys[-1])
-        c2 = reconciliation.cascade.ReceiverProtocol(node_b, key=bob_keys[-1])
+        c1 = qkd.reconciliation.cascade.SenderProtocol(node_a, key=alice_keys[-1])
+        c2 = qkd.reconciliation.cascade.ReceiverProtocol(node_b, key=bob_keys[-1])
 
         c1.start()
         c2.start()

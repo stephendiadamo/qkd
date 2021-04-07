@@ -4,7 +4,7 @@ import numpy as np
 from netsquid.components import QuantumProgram
 from netsquid.protocols import NodeProtocol, Signals
 
-from networks import TwoPartyNetwork
+from qkd.networks import TwoPartyNetwork
 
 
 class EncodeQubitProgram(QuantumProgram):
