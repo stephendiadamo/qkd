@@ -4,7 +4,7 @@ import numpy as np
 from netsquid.components import QuantumProgram
 from netsquid.protocols import NodeProtocol, Signals
 
-from qkd.networks import TwoPartyNoiselessNetwork
+from networks import TwoPartyNetwork
 
 
 class EncodeQubitProgram(QuantumProgram):
@@ -34,7 +34,7 @@ class KeyReceiverProtocol(NodeProtocol):
     Protocol for the receiver of the key.
     """
 
-    def __init__(self, node, key_size=10, port_names=("qubitIO", "classicIO")):
+    def __init__(self, node, key_size=100, port_names=("qubitIO", "classicIO")):
         super().__init__(node)
         self.node = node
         self.q_port = port_names[0]
@@ -46,34 +46,33 @@ class KeyReceiverProtocol(NodeProtocol):
         # Select random bases
         bases = np.random.randint(2, size=self.key_size)
         results = []
+        kept_indices = []
         for i in range(self.key_size):
             # Await a qubit from Alice
             yield self.await_port_input(self.node.ports[self.q_port])
-
             # Measure in random basis
             if bases[i] == 0:
                 res = self.node.qmemory.execute_instruction(instr.INSTR_MEASURE, output_key="M")
             else:
                 res = self.node.qmemory.execute_instruction(instr.INSTR_MEASURE_X, output_key="M")
+
             yield self.await_program(self.node.qmemory)
-            results.append(res[0]['M'][0])
+            if res[0]['M'][0] == 1:
+                kept_indices.append(i)
+                if bases[i] == 0:
+                    results.append(1)
+                else:
+                    results.append(0)
+
             self.node.qmemory.reset()
 
             # Send ACK to Alice to trigger next qubit send (except in last transmit)
             if i < self.key_size - 1:
                 self.node.ports[self.c_port].tx_output('ACK')
 
-        # All qubits arrived, send bases
-        self.node.ports[self.c_port].tx_output(bases)
-
-        # Await matched indices from Alice and process key
-        yield self.await_port_input(self.node.ports[self.c_port])
-        matched_indices = self.node.ports[self.c_port].rx_input().items
-        final_key = []
-        for i in matched_indices:
-            final_key.append(results[i])
-        self.key = final_key
-        self.send_signal(signal_label=Signals.SUCCESS, result=final_key)
+        self.key = results
+        self.node.ports[self.c_port].tx_output(kept_indices)
+        self.send_signal(signal_label=Signals.SUCCESS, result=results)
 
 
 class KeySenderProtocol(NodeProtocol):
@@ -81,7 +80,7 @@ class KeySenderProtocol(NodeProtocol):
     Protocol for the sender of the key.
     """
 
-    def __init__(self, node, key_size=10, port_names=("qubitIO", "classicIO")):
+    def __init__(self, node, key_size=100, port_names=("qubitIO", "classicIO")):
         super().__init__(node)
         self.node = node
         self.q_port = port_names[0]
@@ -95,7 +94,11 @@ class KeySenderProtocol(NodeProtocol):
 
         # Transmit encoded qubits to Bob
         for i, bit in enumerate(secret_key):
-            self.node.qmemory.execute_program(EncodeQubitProgram(bases[i], bit))
+            if bit == 0:
+                bases[i] = 0
+            if bit == 1:
+                bases[i] = 1
+            self.node.qmemory.execute_program(EncodeQubitProgram(bases[i], 0))
             yield self.await_program(self.node.qmemory)
 
             q = self.node.qmemory.pop(0)
@@ -103,24 +106,17 @@ class KeySenderProtocol(NodeProtocol):
             if i < self.key_size - 1:
                 yield self.await_port_input(self.node.ports[self.c_port])
 
-        # Await response from Bob
         yield self.await_port_input(self.node.ports[self.c_port])
-        bob_bases = self.node.ports[self.c_port].rx_input().items[0]
-        matched_indices = []
-        for i in range(self.key_size):
-            if bob_bases[i] == bases[i]:
-                matched_indices.append(i)
-
-        self.node.ports[self.c_port].tx_output(matched_indices)
+        kept_indices = self.node.ports[self.c_port].rx_input().items
         final_key = []
-        for i in matched_indices:
+        for i in kept_indices:
             final_key.append(secret_key[i])
         self.key = final_key
         self.send_signal(signal_label=Signals.SUCCESS, result=final_key)
 
 
 if __name__ == '__main__':
-    n = TwoPartyNoiselessNetwork().generate_network()
+    n = TwoPartyNetwork().generate_noiseless_network()
     node_a = n.get_node("alice")
     node_b = n.get_node("bob")
 

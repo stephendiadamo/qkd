@@ -1,12 +1,9 @@
-import time
-
 import netsquid as ns
 import numpy as np
 import matplotlib.pyplot as plt
 import reconciliation
-from qkd.networks import TwoPartyNetwork
-from qkd.bb84 import KeySenderProtocol as BB84Sender, KeyReceiverProtocol as BB84Receiver
-from qkd.b92 import KeySenderProtocol as B92Sender, KeyReceiverProtocol as B92Receiver
+from networks import TwoPartyNetwork
+from qkd_protocols.bb84 import KeySenderProtocol as BB84Sender, KeyReceiverProtocol as BB84Receiver
 
 bob_keys = []
 alice_keys = []
@@ -136,7 +133,7 @@ def run_experiment(protocols, fibre_length, dephase_rate, key_size, t_time=None,
     for _ in range(runs):
         ns.sim_reset()
 
-        n = TwoPartyNetwork(fibre_length, dephase_rate, key_size, t_time, q_source_probs, loss).generate_network()
+        n = TwoPartyNetwork(fibre_length, dephase_rate, key_size, t_time, q_source_probs, loss).generate_noisy_network()
 
         node_a = n.get_node("alice")
         node_b = n.get_node("bob")
