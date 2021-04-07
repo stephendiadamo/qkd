@@ -23,8 +23,8 @@ def run_bb84_experiment():
 
 
 def run_b92_experiment():
-    protocols = [B92Sender, B92Receiver]
     raise Exception('Noisy version of B92 not yet implemented')
+    # protocols = [B92Sender, B92Receiver]
     # return run_experiment(protocols,
     #                       fibre_length=10,
     #                       dephase_rate=0,
@@ -32,7 +32,7 @@ def run_b92_experiment():
     #                       runs=10)
 
 
-def plot_loss_experiment(runs=100):
+def plot_loss_experiment(protocols, runs=100):
     lengths = np.linspace(0, 10, 6)
     losses = np.linspace(0, 0.01, 5)
     for loss in losses:
@@ -40,14 +40,16 @@ def plot_loss_experiment(runs=100):
         for length in lengths:
             print(f'Running l={length}, p_loss={loss}')
             ns.sim_reset()
-            data.append(run_experiment(fibre_length=length,
-                                       dephase_rate=0,
-                                       key_size=25,
-                                       runs=runs,
-                                       t_time={'T1': 11, 'T2': 10},
-                                       q_source_probs=[1., 0.],
-                                       loss=(0, loss)),
-                        )
+            data.append(run_experiment(
+                protocols=protocols,
+                fibre_length=length,
+                dephase_rate=0,
+                key_size=25,
+                runs=runs,
+                t_time={'T1': 11, 'T2': 10},
+                q_source_probs=[1., 0.],
+                loss=(0, loss)),
+            )
         correct_keys = [d['MATCHED_KEYS'] / runs for d in data]
         plt.plot([l / 1000 for l in lengths], correct_keys,
                  marker='.',
@@ -61,7 +63,7 @@ def plot_loss_experiment(runs=100):
     plt.show()
 
 
-def plot_key_length_vs_length(runs=100):
+def plot_key_length_vs_length(protocols, runs=100):
     lengths = np.linspace(0, 10, 5)
     sizes = np.linspace(15, 100, 4, dtype=int)
     for size in sizes:
@@ -69,14 +71,16 @@ def plot_key_length_vs_length(runs=100):
         for length in lengths:
             print(f'Running l={length}, size={size}')
             ns.sim_reset()
-            data.append(run_experiment(fibre_length=length,
-                                       dephase_rate=0,
-                                       key_size=size,
-                                       runs=runs,
-                                       t_time={'T1': 11, 'T2': 10},
-                                       q_source_probs=[1., 0.],
-                                       loss=(0, 0.01)),
-                        )
+            data.append(run_experiment(
+                protocols=protocols,
+                fibre_length=length,
+                dephase_rate=0,
+                key_size=size,
+                runs=runs,
+                t_time={'T1': 11, 'T2': 10},
+                q_source_probs=[1., 0.],
+                loss=(0, 0.01)),
+            )
         correct_keys = [d['MATCHED_KEYS'] / runs for d in data]
         plt.plot([l / 1000 for l in lengths], correct_keys,
                  marker='.',
@@ -90,7 +94,7 @@ def plot_key_length_vs_length(runs=100):
     plt.show()
 
 
-def plot_fibre_length_experiment(runs=100):
+def plot_fibre_length_experiment(protocols, runs=100):
     lengths = np.linspace(100, 1000, 4)
     phases = np.linspace(0, 0.5, 4)
     for phase in phases:
@@ -98,12 +102,14 @@ def plot_fibre_length_experiment(runs=100):
         for length in lengths:
             print(f'Running l={length}, p={phase}')
             ns.sim_reset()
-            data.append(run_experiment(fibre_length=length,
-                                       dephase_rate=phase,
-                                       key_size=50,
-                                       runs=runs,
-                                       t_time={'T1': 11, 'T2': 10},
-                                       q_source_probs=[1., 0.]))
+            data.append(run_experiment(
+                protocols=protocols,
+                fibre_length=length,
+                dephase_rate=phase,
+                key_size=50,
+                runs=runs,
+                t_time={'T1': 11, 'T2': 10},
+                q_source_probs=[1., 0.]))
         correct_keys = [d['MATCHED_KEYS'] / runs for d in data]
         plt.plot([l / 1000 for l in lengths], correct_keys,
                  marker='.',
