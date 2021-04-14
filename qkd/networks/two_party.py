@@ -53,6 +53,7 @@ class TwoPartyNetwork:
             PhysicalInstruction(instr.INSTR_MEASURE_X, duration=10, parallel=False)
         ]
         processor = QuantumProcessor("quantum_processor",
+                                     num_positions=100,
                                      phys_instructions=physical_instructions)
 
         if with_ent_source:
