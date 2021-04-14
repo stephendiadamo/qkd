@@ -164,9 +164,9 @@ class TwoPartyNetwork:
         alice = Node(
             "alice",
             qmemory=self._create_processor(
-                self._dephase_rate,
-                self._t_time,
-                self._memory_size,
+                dephase_rate=self._dephase_rate,
+                t_times=self._t_time,
+                memory_size=self._memory_size,
                 qsource={
                     'freq': 1,
                     'probs': self._q_source_probs
@@ -176,9 +176,9 @@ class TwoPartyNetwork:
         bob = Node(
             "bob",
             qmemory=self._create_processor(
-                self._dephase_rate,
-                self._t_time,
-                self._memory_size,
+                dephase_rate=self._dephase_rate,
+                t_times=self._t_time,
+                memory_size=self._memory_size,
                 qdetect={'sys_delay': 0, 'dead_time': 0}))
         network.add_nodes([alice, bob])
 

@@ -58,9 +58,7 @@ class KeyReceiverProtocol(NodeProtocol):
                 self.node.qmemory.subcomponents['qubit_detector_x'].ports['qin0'].tx_input(message)
             qubits_received += 1
 
-        self.node.ports[self.q_port].forward_input(self.node.qmemory.ports["qin0"])
-        self.node.qmemory.ports["qin0"].bind_input_handler(measure_qubit)
-
+        self.node.ports[self.q_port].bind_input_handler(measure_qubit)
         self.node.qmemory.subcomponents['qubit_detector_z'].ports['cout0'].bind_output_handler(record_measurement)
         self.node.qmemory.subcomponents['qubit_detector_x'].ports['cout0'].bind_output_handler(record_measurement)
 
@@ -132,55 +130,7 @@ class KeySenderProtocol(NodeProtocol):
         self.send_signal(signal_label=Signals.SUCCESS, result=final_key)
 
 
-def run_experiment(fibre_length, dephase_rate, key_size, t_time=None, runs=100, q_source_probs=(1., 0.), loss=(0, 0)):
-    if t_time is None:
-        t_time = {'T1': 10001, 'T2': 10000}
-
-    global bob_keys, alice_keys
-    bob_keys = []
-    alice_keys = []
-
-    # ns.logger.setLevel(1)
-    for _ in range(runs):
-        ns.sim_reset()
-
-        n = TwoPartyNetwork(fibre_length, dephase_rate, key_size, t_time, q_source_probs, loss).generate_noisy_network()
-        node_a = n.get_node("alice")
-        node_b = n.get_node("bob")
-        p1 = KeySenderProtocol(node_a, key_size=key_size)
-        p2 = KeyReceiverProtocol(node_b, key_size=key_size)
-
-        p1.start()
-        p2.start()
-
-        ns.sim_run()
-
-    def keys_match(key1, key2):
-        if len(key1) != len(key2):
-            return False
-
-        for i in range(len(key1)):
-            if key1[i] != key2[i]:
-                return False
-        return True
-
-    _stats = {'MISMATCHED_KEYS': 0, 'MATCHED_KEYS': 0}
-    for i, bob_key in enumerate(bob_keys):
-        alice_key = alice_keys[i]
-        if not keys_match(alice_key, bob_key):
-            _stats['MISMATCHED_KEYS'] += 1
-        else:
-            _stats['MATCHED_KEYS'] += 1
-    return _stats
-
-
 if __name__ == '__main__':
     start = time.time()
-    print(run_experiment(fibre_length=100,
-                         dephase_rate=0,
-                         key_size=200,
-                         runs=10,
-                         t_time={'T1': 11, 'T2': 10},
-                         q_source_probs=[1., 0.],
-                         loss=(0.001, 0.000)))
+
     print(f'Finished in {time.time() - start} seconds.')
