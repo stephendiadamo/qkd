@@ -130,7 +130,6 @@ class KeySenderProtocol(NodeProtocol):
         results = []
         # Transmit encoded qubits to Bob
         for i, bit in enumerate(secret_key):
-            print(i)
             self.node.qmemory.execute_program(GenerateEntanglement(), qubit_mapping=[0, 1])
             yield self.await_program(self.node.qmemory)
 

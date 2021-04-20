@@ -49,6 +49,7 @@ class TwoPartyNetwork:
             PhysicalInstruction(instr.INSTR_H, duration=1, parallel=True),
             PhysicalInstruction(instr.INSTR_X, duration=1, parallel=True),
             PhysicalInstruction(instr.INSTR_Z, duration=1, parallel=True),
+            PhysicalInstruction(instr.INSTR_CNOT, duration=5, parallel=True),
             PhysicalInstruction(instr.INSTR_MEASURE, duration=7, parallel=False),
             PhysicalInstruction(instr.INSTR_MEASURE_X, duration=10, parallel=False)
         ]
