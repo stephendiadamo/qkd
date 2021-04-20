@@ -3,8 +3,9 @@ import netsquid.components.instructions as instr
 import numpy as np
 from netsquid.components import QuantumProgram
 from netsquid.protocols import NodeProtocol, Signals
-
-from qkd.networks import TwoPartyNoiselessNetwork
+from netsquid.nodes import Node, Network, DirectConnection
+from netsquid.components.qprocessor import QuantumProcessor, PhysicalInstruction
+from netsquid.components import QuantumChannel, QuantumProgram, ClassicalChannel, FibreDelayModel
 
 class GenerateEntanglement(QuantumProgram):
     """
@@ -69,9 +70,12 @@ class KeyReceiverProtocol(NodeProtocol):
             if bases[i] == 2:
                 res = self.node.qmemory.execute_instruction(instr.INSTR_MEASURE, output_key="M")
             if bases[i] == 3:
-                res = abs(1-self.node.qmemory.execute_instruction(instr.INSTR_MEASURE_X, output_key="M"))
+                res = self.node.qmemory.execute_instruction(instr.INSTR_MEASURE_X, output_key="M")
             yield self.await_program(self.node.qmemory)
-            results.append(res[0]['M'][0])
+            if bases[i] == 3:
+                results.append(1-res[0]['M'][0])
+            else:
+                results.append(res[0]['M'][0])
             self.node.qmemory.reset()
 
             # Send ACK to Alice to trigger next qubit send (except in last transmit)
@@ -95,13 +99,18 @@ class InitStateProgram(QuantumProgram):
     Program to create a qubit and transform it to the |1> state.
     """
 
-    default_num_qubits = 1
+    default_num_qubits = 2
 
     def program(self):
-        q1, = self.get_qubit_indices(1)
+        q1, q2, = self.get_qubit_indices(2)
         self.apply(instr.INSTR_INIT, q1)
         self.apply(instr.INSTR_X, q1)
         yield self.run()
+
+
+
+
+
 class KeySenderProtocol(NodeProtocol):
     """
     Protocol for the sender of the key.
@@ -121,21 +130,25 @@ class KeySenderProtocol(NodeProtocol):
 
         # Transmit encoded qubits to Bob
         for i, bit in enumerate(secret_key):
-            self.node.qmemory.execute_program(InitStateProgram())
+            self.node.qmemory.execute_program(GenerateEntanglement())
             yield self.await_program(self.node.qmemory)
-            
+
             self.node.qmemory.execute_program(GenerateEntanglement(), qubit_mapping=[1, 2])
             yield self.await_program(self.node.qmemory)
-            self.node.ports[self.q_port].tx_output(self.node.qmemory.pop(2))
+            q = self.node.qmemory.pop(2)
+            self.node.ports[self.q_port].tx_output(q)
             
             if bases[i] == 0:
                 res = self.node.qmemory.execute_instruction(instr.INSTR_MEASURE, output_key="M")
             if bases[i] == 1:
              res = self.node.qmemory.execute_instruction(instr.INSTR_MEASURE_X, output_key="M")
             if bases[i] == 2:
-                res = abs(1-self.node.qmemory.execute_instruction(instr.INSTR_MEASURE, output_key="M"))
+                res = self.node.qmemory.execute_instruction(instr.INSTR_MEASURE, output_key="M")
             yield self.await_program(self.node.qmemory)
-            results.append(res[0]['M'][0])
+            if bases[i] == 2:
+                    results.append(1-res[0]['M'][0])
+            else:
+                results.append(res[0]['M'][0])
             if i < self.key_size - 1:
                 yield self.await_port_input(self.node.ports[self.c_port])
         
@@ -149,13 +162,62 @@ class KeySenderProtocol(NodeProtocol):
         self.node.ports[self.c_port].tx_output(matched_indices)
         final_key = []
         for i in matched_indices:
-            final_key.append(secret_key[i])
+            final_key.append(results[i])
         self.key = final_key
         self.send_signal(signal_label=Signals.SUCCESS, result=final_key)
 
 
+def create_processor():
+    """Factory to create a quantum processor for each end node.
+    Has three memory positions and the physical instructions necessary
+    for teleportation.
+    """
+    physical_instructions = [
+        PhysicalInstruction(instr.INSTR_INIT, duration=3, parallel=True),
+        PhysicalInstruction(instr.INSTR_H, duration=1, parallel=True),
+        PhysicalInstruction(instr.INSTR_X, duration=1, parallel=True),
+        PhysicalInstruction(instr.INSTR_Z, duration=1, parallel=True),
+        PhysicalInstruction(instr.INSTR_MEASURE, duration=7, parallel=False),
+        PhysicalInstruction(instr.INSTR_MEASURE_X, duration=10, parallel=False)
+    ]
+    processor = QuantumProcessor("quantum_processor",
+                                 phys_instructions=physical_instructions)
+    return processor
+
+
+def generate_network():
+    """
+    Generate the network. For BB84, we need a quantum and classical channel.
+    """
+
+    network = Network("BB92etwork")
+    alice = Node("alice", qmemory=create_processor())
+    bob = Node("bob", qmemory=create_processor())
+
+    network.add_nodes([alice, bob])
+    p_ab, p_ba = network.add_connection(alice,
+                                        bob,
+                                        label="q_chan",
+                                        channel_to=QuantumChannel('AqB', delay=10),
+                                        channel_from=QuantumChannel('BqA', delay=10),
+                                        port_name_node1="qubitIO",
+                                        port_name_node2="qubitIO")
+    # Map the qubit input port from the above channel to the memory index 0 on Bob"s
+    # side
+    alice.ports[p_ab].forward_input(alice.qmemory.ports["qin0"])
+    bob.ports[p_ba].forward_input(bob.qmemory.ports["qin0"])
+    network.add_connection(alice,
+                           bob,
+                           label="c_chan",
+                           channel_to=ClassicalChannel('AcB', delay=10),
+                           channel_from=ClassicalChannel('BcA', delay=10),
+                           port_name_node1="classicIO",
+                           port_name_node2="classicIO")
+    return network
+
+
 if __name__ == '__main__':
-    n = TwoPartyNoiselessNetwork().generate_network()
+    n = generate_network()
     node_a = n.get_node("alice")
     node_b = n.get_node("bob")
 
