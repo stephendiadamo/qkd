@@ -7,6 +7,7 @@ from netsquid.nodes import Node, Network, DirectConnection
 from netsquid.components.qprocessor import QuantumProcessor, PhysicalInstruction
 from netsquid.components import QuantumChannel, QuantumProgram, ClassicalChannel, FibreDelayModel
 
+
 class GenerateEntanglement(QuantumProgram):
     """
     Program to create two qubits and entangle them.
@@ -20,7 +21,8 @@ class GenerateEntanglement(QuantumProgram):
         self.apply(instr.INSTR_H, q1)
         self.apply(instr.INSTR_CNOT, [q1, q2])
         yield self.run()
-        
+
+
 class EncodeQubitProgram(QuantumProgram):
     """
     Program to encode a bit according to a secret key and a basis.
@@ -58,7 +60,7 @@ class KeyReceiverProtocol(NodeProtocol):
 
     def run(self):
         # Select random bases
-        bases = 1+np.random.randint(3, size=self.key_size)
+        bases = 1 + np.random.randint(3, size=self.key_size)
         results = []
         for i in range(self.key_size):
             # Await a qubit from Alice
@@ -73,7 +75,7 @@ class KeyReceiverProtocol(NodeProtocol):
                 res = self.node.qmemory.execute_instruction(instr.INSTR_MEASURE_X, output_key="M")
             yield self.await_program(self.node.qmemory)
             if bases[i] == 3:
-                results.append(1-res[0]['M'][0])
+                results.append(1 - res[0]['M'][0])
             else:
                 results.append(res[0]['M'][0])
             self.node.qmemory.reset()
@@ -94,6 +96,7 @@ class KeyReceiverProtocol(NodeProtocol):
         self.key = final_key
         self.send_signal(signal_label=Signals.SUCCESS, result=final_key)
 
+
 class InitStateProgram(QuantumProgram):
     """
     Program to create a qubit and transform it to the |1> state.
@@ -106,9 +109,6 @@ class InitStateProgram(QuantumProgram):
         self.apply(instr.INSTR_INIT, q1)
         self.apply(instr.INSTR_X, q1)
         yield self.run()
-
-
-
 
 
 class KeySenderProtocol(NodeProtocol):
@@ -127,38 +127,38 @@ class KeySenderProtocol(NodeProtocol):
     def run(self):
         secret_key = np.random.randint(2, size=self.key_size)
         bases = list(np.random.randint(3, size=self.key_size))
-
+        results = []
         # Transmit encoded qubits to Bob
         for i, bit in enumerate(secret_key):
-            self.node.qmemory.execute_program(GenerateEntanglement())
+            print(i)
+            self.node.qmemory.execute_program(GenerateEntanglement(), qubit_mapping=[0, 1])
             yield self.await_program(self.node.qmemory)
 
-            self.node.qmemory.execute_program(GenerateEntanglement(), qubit_mapping=[1, 2])
-            yield self.await_program(self.node.qmemory)
-            q = self.node.qmemory.pop(2)
+            q = self.node.qmemory.pop(1)
             self.node.ports[self.q_port].tx_output(q)
-            
+
             if bases[i] == 0:
                 res = self.node.qmemory.execute_instruction(instr.INSTR_MEASURE, output_key="M")
             if bases[i] == 1:
-             res = self.node.qmemory.execute_instruction(instr.INSTR_MEASURE_X, output_key="M")
+                res = self.node.qmemory.execute_instruction(instr.INSTR_MEASURE_X, output_key="M")
             if bases[i] == 2:
                 res = self.node.qmemory.execute_instruction(instr.INSTR_MEASURE, output_key="M")
             yield self.await_program(self.node.qmemory)
+
             if bases[i] == 2:
-                    results.append(1-res[0]['M'][0])
+                results.append(1 - res[0]['M'][0])
             else:
                 results.append(res[0]['M'][0])
             if i < self.key_size - 1:
                 yield self.await_port_input(self.node.ports[self.c_port])
-        
+
         # Await response from Bob
         yield self.await_port_input(self.node.ports[self.c_port])
         bob_bases = self.node.ports[self.c_port].rx_input().items[0]
         matched_indices = []
         for i in range(self.key_size):
             if bob_bases[i] == bases[i]:
-                    matched_indices.append(i)
+                matched_indices.append(i)
         self.node.ports[self.c_port].tx_output(matched_indices)
         final_key = []
         for i in matched_indices:
@@ -177,10 +177,12 @@ def create_processor():
         PhysicalInstruction(instr.INSTR_H, duration=1, parallel=True),
         PhysicalInstruction(instr.INSTR_X, duration=1, parallel=True),
         PhysicalInstruction(instr.INSTR_Z, duration=1, parallel=True),
+        PhysicalInstruction(instr.INSTR_CNOT, duration=1, parallel=True),
         PhysicalInstruction(instr.INSTR_MEASURE, duration=7, parallel=False),
         PhysicalInstruction(instr.INSTR_MEASURE_X, duration=10, parallel=False)
     ]
     processor = QuantumProcessor("quantum_processor",
+                                 num_positions=5,
                                  phys_instructions=physical_instructions)
     return processor
 
@@ -227,7 +229,10 @@ if __name__ == '__main__':
     p1.start()
     p2.start()
 
+    # ns.logger.setLevel(4)
+
     stats = ns.sim_run()
+
 
     print(len(p1.key))
     print(p1.key)
