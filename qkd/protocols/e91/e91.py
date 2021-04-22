@@ -60,20 +60,26 @@ class KeyReceiverProtocol(NodeProtocol):
 
     def run(self):
         # Select random bases
-        bases = np.random.randint(2, size=self.key_size)
+        bases = 1 + np.random.randint(3, size=self.key_size)
         results = []
         for i in range(self.key_size):
             # Await a qubit from Alice
             yield self.await_port_input(self.node.ports[self.q_port])
 
             # Measure in random basis
-            if bases[i] == 0:
-                res = self.node.qmemory.execute_instruction(instr.INSTR_MEASURE, output_key="M")
-            elif bases[i] == 1:
+            if bases[i] == 1:
                 res = self.node.qmemory.execute_instruction(instr.INSTR_MEASURE_X, output_key="M")
-
+            if bases[i] == 2:
+                res = self.node.qmemory.execute_instruction(instr.INSTR_MEASURE, output_key="M")
+            if bases[i] == 3:
+                res = self.node.qmemory.execute_instruction(instr.INSTR_MEASURE_X, output_key="M")
             yield self.await_program(self.node.qmemory)
-            results.append(res[0]['M'][0])
+            if bases[i] == 3:
+                results.append(1 - res[0]['M'][0])
+            if bases[i] == 2:
+                results.append(1 - res[0]['M'][0])
+            if bases[i] == 1:
+                results.append(res[0]['M'][0])
             self.node.qmemory.reset()
 
             # Send ACK to Alice to trigger next qubit send (except in last transmit)
@@ -121,10 +127,11 @@ class KeySenderProtocol(NodeProtocol):
         self.key = None
 
     def run(self):
-        bases = list(np.random.randint(2, size=self.key_size))
+        secret_key = np.random.randint(2, size=self.key_size)
+        bases = list(np.random.randint(3, size=self.key_size))
         results = []
         # Transmit encoded qubits to Bob
-        for i, bit in enumerate(bases):
+        for i, bit in enumerate(secret_key):
             self.node.qmemory.execute_program(GenerateEntanglement(), qubit_mapping=[0, 1])
             yield self.await_program(self.node.qmemory)
 
@@ -133,12 +140,16 @@ class KeySenderProtocol(NodeProtocol):
 
             if bases[i] == 0:
                 res = self.node.qmemory.execute_instruction(instr.INSTR_MEASURE, output_key="M")
-            elif bases[i] == 1:
+            if bases[i] == 1:
                 res = self.node.qmemory.execute_instruction(instr.INSTR_MEASURE_X, output_key="M")
-
+            if bases[i] == 2:
+                res = self.node.qmemory.execute_instruction(instr.INSTR_MEASURE, output_key="M")
             yield self.await_program(self.node.qmemory)
 
-            results.append(res[0]['M'][0])
+            if bases[i] == 2:
+                results.append(1 - res[0]['M'][0])
+            else:
+                results.append(res[0]['M'][0])
             if i < self.key_size - 1:
                 yield self.await_port_input(self.node.ports[self.c_port])
 
@@ -222,6 +233,7 @@ if __name__ == '__main__':
     # ns.logger.setLevel(4)
 
     stats = ns.sim_run()
+
 
     print(len(p1.key))
     print(p1.key)
