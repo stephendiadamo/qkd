@@ -76,7 +76,9 @@ class KeyReceiverProtocol(NodeProtocol):
             yield self.await_program(self.node.qmemory)
             if bases[i] == 3:
                 results.append(1 - res[0]['M'][0])
-            else:
+            if bases[i] == 2:
+                results.append(1 - res[0]['M'][0])
+            if bases[i] == 1:
                 results.append(res[0]['M'][0])
             self.node.qmemory.reset()
 
