@@ -4,11 +4,24 @@ import matplotlib.pyplot as plt
 
 from qkd.networks import TwoPartyNetwork
 from qkd.protocols.bb84 import KeySenderProtocol as BB84Sender, KeyReceiverProtocol as BB84Receiver
+from qkd.protocols.e91 import KeySenderProtocol as E91Sender, KeyReceiverProtocol as E91Receiver
 from qkd.reconciliation import cascade
 
 bob_keys = []
 alice_keys = []
 bob_corrected_keys = []
+
+
+def run_e91_experiment():
+    protocols = [BB84Sender, BB84Receiver]
+    return run_experiment(protocols,
+                          fibre_length=25000,
+                          dephase_rate=0.5,
+                          t_time={'T1': 11, 'T2': 10},
+                          key_size=300,
+                          q_source_probs=[1., 0.],
+                          # loss=(0.001, 0.0001),
+                          runs=10)
 
 
 def run_bb84_experiment():
@@ -195,4 +208,5 @@ def run_experiment(protocols, fibre_length, dephase_rate, key_size, t_time=None,
 
 
 if __name__ == "__main__":
+    print(run_e91_experiment())
     print(run_bb84_experiment())

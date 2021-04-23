@@ -1,28 +1,10 @@
-import time
-
+import netsquid as ns
 import netsquid.components.instructions as instr
 import numpy as np
 from netsquid.components import QuantumProgram, SourceStatus
 from netsquid.protocols import NodeProtocol, Signals
 
-
-class EncodeQubitProgram(QuantumProgram):
-    """
-    Program to encode a bit according to a secret key and a basis.
-    """
-
-    def __init__(self, base, bit):
-        super().__init__()
-        self.base = base
-        self.bit = bit
-
-    def program(self):
-        q1, = self.get_qubit_indices(1)
-        if self.bit == 1:
-            self.apply(instr.INSTR_X, q1)
-        if self.base == 1:
-            self.apply(instr.INSTR_H, q1)
-        yield self.run()
+from qkd.networks import TwoPartyNetwork
 
 
 class KeyReceiverProtocol(NodeProtocol):
@@ -92,42 +74,64 @@ class KeySenderProtocol(NodeProtocol):
         self.key = None
 
     def run(self):
-        secret_key = np.random.randint(2, size=self.key_size)
         bases = list(np.random.randint(2, size=self.key_size))
+        bit = 0
+        results = []
 
         # Transmit encoded qubits to Bob
-        self.node.qmemory.subcomponents['qubit_source'].status = SourceStatus.INTERNAL
-        for i, bit in enumerate(secret_key):
-            # Await a qubit
-            yield self.await_port_output(self.node.qmemory.subcomponents['qubit_source'].ports['qout0'])
-            qubits = self.node.qmemory.subcomponents['qubit_source'].ports['qout0'].rx_output().items
-            self.node.qmemory.put(qubits, positions=[0], replace=True)
-            self.node.qmemory.execute_program(EncodeQubitProgram(bases[i], bit))
-            yield self.await_program(self.node.qmemory)
-            self.node.qmemory.pop(0)
-            self.node.ports[self.q_port].tx_output(self.node.qmemory.ports['qout'].rx_output())
-        self.node.qmemory.subcomponents['qubit_source'].status = SourceStatus.OFF
+        def record_measurement(msg):
+            results.append(msg.items[0])
 
-        # Signal end of transmission
+        def measure_half(message):
+            nonlocal bit
+            if bases[bit] == 0:
+                self.node.qmemory.subcomponents['qubit_detector_z'].ports['qin0'].tx_input(message)
+            else:
+                self.node.qmemory.subcomponents['qubit_detector_x'].ports['qin0'].tx_input(message)
+
+        self.node.qmemory.subcomponents['ent_source'].ports['qout0'].bind_output_handler(measure_half)
+        self.node.qmemory.subcomponents['qubit_detector_z'].ports['cout0'].bind_output_handler(record_measurement)
+        self.node.qmemory.subcomponents['qubit_detector_x'].ports['cout0'].bind_output_handler(record_measurement)
+
+        self.node.qmemory.subcomponents['ent_source'].status = SourceStatus.INTERNAL
+        for i in range(self.key_size):
+            yield self.await_port_output(self.node.qmemory.subcomponents['ent_source'].ports['qout1'])
+            self.node.ports[self.q_port].tx_output(
+                self.node.qmemory.subcomponents['ent_source'].ports['qout1'].rx_output())
+
+        self.node.qmemory.subcomponents['ent_source'].status = SourceStatus.OFF
         self.node.ports[self.c_port].tx_output('DONE')
 
         # Await response from Bob
         yield self.await_port_input(self.node.ports[self.c_port])
         bob_bases = self.node.ports[self.c_port].rx_input().items[0]
         matched_indices = []
-        for i in range(len(bob_bases)):
+        for i in range(self.key_size):
             if bob_bases[i] == bases[i]:
                 matched_indices.append(i)
-
-        self.node.ports[self.c_port].tx_output(matched_indices[:-1])
+        self.node.ports[self.c_port].tx_output(matched_indices)
         final_key = []
-        for i in matched_indices[:-1]:
-            final_key.append(secret_key[i])
+        for i in matched_indices:
+            final_key.append(results[i])
         self.key = final_key
         self.send_signal(signal_label=Signals.SUCCESS, result=final_key)
 
 
 if __name__ == '__main__':
-    start = time.time()
+    n = TwoPartyNetwork('net', 0, 0, 10, t_time={'T1': 110, 'T2': 100}, loss=(0, 0)).generate_noisy_network()
+    node_a = n.get_node("alice")
+    node_b = n.get_node("bob")
 
-    print(f'Finished in {time.time() - start} seconds.')
+    p1 = KeySenderProtocol(node_a, key_size=100)
+    p2 = KeyReceiverProtocol(node_b, key_size=100)
+
+    p1.start()
+    p2.start()
+
+    # ns.logger.setLevel(4)
+
+    stats = ns.sim_run()
+
+    print(len(p1.key))
+    print(p1.key)
+    print(p2.key)

@@ -68,7 +68,7 @@ class TwoPartyNetwork:
         return processor
 
     @staticmethod
-    def _create_processor(dephase_rate, t_times, memory_size, qsource=None, qdetect=None):
+    def _create_processor(dephase_rate, t_times, memory_size, qsource=None, qdetect=None, ent_source=False):
 
         gate_noise_model = DephaseNoiseModel(dephase_rate, time_independent=False)
         memory_noise_model = T1T2NoiseModel(T1=t_times['T1'], T2=t_times['T2'])
@@ -110,6 +110,14 @@ class TwoPartyNetwork:
                                    num_ports=1,
                                    status=SourceStatus.OFF)
             processor.add_subcomponent(qubit_source)
+
+        if ent_source:
+            ent_source = QSource('ent_source',
+                                 StateSampler([ks.b00]),
+                                 num_ports=2,
+                                 status=SourceStatus.OFF)
+            processor.add_subcomponent(ent_source,
+                                       name='ent_source')
 
         if qdetect is not None:
             qubit_detector_z = QuantumDetector('qubit_detector_z',
@@ -171,7 +179,9 @@ class TwoPartyNetwork:
                 qsource={
                     'freq': 1,
                     'probs': self._q_source_probs
-                }
+                },
+                qdetect={'sys_delay': 0, 'dead_time': 0},
+                ent_source=True
             )
         )
         bob = Node(
