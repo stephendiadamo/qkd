@@ -13,7 +13,7 @@ bob_corrected_keys = []
 
 
 def run_e91_experiment():
-    protocols = [BB84Sender, BB84Receiver]
+    protocols = [E91Sender, E91Receiver]
     return run_experiment(protocols,
                           fibre_length=25000,
                           dephase_rate=0.5,

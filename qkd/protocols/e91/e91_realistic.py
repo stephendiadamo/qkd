@@ -88,6 +88,7 @@ class KeySenderProtocol(NodeProtocol):
                 self.node.qmemory.subcomponents['qubit_detector_z'].ports['qin0'].tx_input(message)
             else:
                 self.node.qmemory.subcomponents['qubit_detector_x'].ports['qin0'].tx_input(message)
+            bit += 1
 
         self.node.qmemory.subcomponents['ent_source'].ports['qout0'].bind_output_handler(measure_half)
         self.node.qmemory.subcomponents['qubit_detector_z'].ports['cout0'].bind_output_handler(record_measurement)
@@ -106,9 +107,10 @@ class KeySenderProtocol(NodeProtocol):
         yield self.await_port_input(self.node.ports[self.c_port])
         bob_bases = self.node.ports[self.c_port].rx_input().items[0]
         matched_indices = []
-        for i in range(self.key_size):
+        for i in range(len(bob_bases)):
             if bob_bases[i] == bases[i]:
                 matched_indices.append(i)
+
         self.node.ports[self.c_port].tx_output(matched_indices)
         final_key = []
         for i in matched_indices:
