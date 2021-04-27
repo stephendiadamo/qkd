@@ -1,5 +1,4 @@
 import netsquid as ns
-import netsquid.components.instructions as instr
 import numpy as np
 from netsquid.components import QuantumProgram, SourceStatus
 from netsquid.protocols import NodeProtocol, Signals
