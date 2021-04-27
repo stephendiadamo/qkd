@@ -27,7 +27,6 @@ def run_e91_experiment(correction=True):
 
 def run_bb84_experiment(correction=True):
     protocols = [BB84Sender, BB84Receiver]
-
     return run_experiment(protocols,
                           fibre_length=25000,
                           dephase_rate=0.5,
@@ -111,10 +110,10 @@ def plot_key_length_vs_length(protocols, runs=100):
     plt.show()
 
 
-def plot_fibre_length_experiment(protocols, runs=5):
-    lengths = np.linspace(100, 20000, 5)
-    phases = np.linspace(0, 0.5, 4)
-    key_size = 200
+def plot_fibre_length_experiment(protocols, sim_type='matched', runs=15):
+    lengths = np.linspace(100, 3000, 5)
+    phases = [0.25, 0.5]
+    key_size = 300
     for phase in phases:
         data = []
         for length in lengths:
@@ -125,14 +124,22 @@ def plot_fibre_length_experiment(protocols, runs=5):
                 fibre_length=length,
                 dephase_rate=phase,
                 key_size=key_size,
+                loss=(0.00, 0.001),
                 runs=runs,
                 t_time={'T1': 11, 'T2': 10},
                 q_source_probs=[1., 0.]))
-        correct_keys = [d['MATCHED_KEYS'] / runs for d in data]
-        plt.plot([l / 1000 for l in lengths], correct_keys,
-                 marker='.',
-                 linestyle='solid',
-                 label=f'Dephase Rate={"%.2f" % phase}')
+        if sim_type == 'matched':
+            correct_keys = [d['MATCHED_KEYS'] / runs for d in data]
+            plt.plot([l / 1000 for l in lengths], correct_keys,
+                     marker='.',
+                     linestyle='solid',
+                     label=f'Dephase Rate={"%.2f" % phase}')
+        elif sim_type == 'qber':
+            qbers = [d['AVG_QBER'] for d in data]
+            plt.plot([l / 1000 for l in lengths], qbers,
+                     marker='.',
+                     linestyle='solid',
+                     label=f'Dephase Rate={"%.2f" % phase}')
         ax = plt.gca()
         line = ax.lines[-1]
         print(line.get_xydata())
@@ -140,7 +147,10 @@ def plot_fibre_length_experiment(protocols, runs=5):
     plt.title(f'Key Distribution Efficiency Over Fibre: Key size {key_size}')
     plt.ylim(0, 1.1)
     plt.xlabel('Length (km)')
-    plt.ylabel('Percentage of correctly transmitted keys')
+    if sim_type == 'matched':
+        plt.ylabel('Percentage of correctly transmitted keys')
+    elif sim_type == 'qber':
+        plt.ylabel('Bit Error Rate')
     plt.legend()
     plt.show()
 
@@ -157,7 +167,6 @@ def run_experiment(protocols, fibre_length, dephase_rate, key_size, t_time=None,
 
     for _ in range(runs):
         ns.sim_reset()
-        # ns.logger.setLevel(1)
         n = TwoPartyNetwork('network',
                             fibre_length,
                             dephase_rate,
@@ -190,7 +199,7 @@ def run_experiment(protocols, fibre_length, dephase_rate, key_size, t_time=None,
             bob_corrected_keys.append(c2.cor_key)
 
     def keys_match(key1, key2):
-        if len(key1) != len(key2):
+        if key1 is None or key2 is None or len(key1) != len(key2):
             return False
         for j in range(len(key1)):
             if key1[j] != key2[j]:
@@ -199,10 +208,12 @@ def run_experiment(protocols, fibre_length, dephase_rate, key_size, t_time=None,
 
     def qber(key1, key2):
         matched = 0
+        if key1 is None or key2 is None:
+            return 1
         for j in range(len(key1)):
             if key1[j] == key2[j]:
                 matched += 1
-        return 1 - matched / len(key1)
+        return 1 - (matched / len(key1))
 
     _stats = {'MISMATCHED_KEYS': 0, 'MATCHED_KEYS': 0, 'CORRECTED_MATCHED': 0, 'AVG_QBER': 0}
     for i, bob_key in enumerate(bob_keys):
@@ -223,6 +234,6 @@ def run_experiment(protocols, fibre_length, dephase_rate, key_size, t_time=None,
 
 
 if __name__ == "__main__":
-    print(run_e91_experiment())
-    print(run_bb84_experiment())
-    # plot_fibre_length_experiment([E91Sender, E91Receiver])
+    # print(run_e91_experiment())
+    # print(run_bb84_experiment())
+    plot_fibre_length_experiment([E91Sender, E91Receiver], sim_type='qber')
