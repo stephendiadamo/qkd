@@ -33,6 +33,7 @@ class SenderProtocol(NodeProtocol):
     def __init__(self, node, key, c_port_name="classicIO"):
         super().__init__(node)
         self.node = node
+        self.transmissions_received = 0
         self.c_port = c_port_name
         self._key = key
 
@@ -48,6 +49,7 @@ class SenderProtocol(NodeProtocol):
         while True:
             self.node.ports[self.c_port].reset()
             yield self.await_port_input(self.node.ports[self.c_port])
+            self.transmissions_received += 1
             indices = self.node.ports[self.c_port].rx_input().items
             parity = sum([self.key[i] for i in indices]) % 2
             self.node.ports[self.c_port].tx_output(parity)
@@ -61,6 +63,7 @@ class ReceiverProtocol(NodeProtocol):
         self.qber = qber
         self.rate = rate
         self.passes = 4
+        self.transmissions_made = 0
         np.random.seed(seed)
         blocksizes = next_pow_2(np.ceil(rate / qber))
         self.blocks = [blocksizes * 2 ** i for i in range(self.passes)]
@@ -88,8 +91,8 @@ class ReceiverProtocol(NodeProtocol):
         return list(self._corrected_key)
 
     @corrected_key.setter
-    def corrected_key(self, key):
-        self._corrected_key = key
+    def corrected_key(self, k):
+        self._corrected_key = k
 
     def get_cur_block(self, block_length, iteration):
         if len(self.cur_order) >= (iteration + 1) * block_length:
@@ -107,13 +110,13 @@ class ReceiverProtocol(NodeProtocol):
                 self.node.ports[self.c_port].reset()
                 self.node.ports[self.c_port].tx_output(indices)
                 yield self.await_port_input(self.node.ports[self.c_port])
+                self.transmissions_made += 1
                 alice_parity = self.node.ports[self.c_port].rx_input().items[0]
                 if parity != alice_parity:
                     cur_block = indices
                     while len(cur_block) != 1:
                         right = cur_block[len(cur_block) // 2:]
                         left = cur_block[:len(cur_block) // 2]
-
                         self.node.ports[self.c_port].reset()
                         self.node.ports[self.c_port].tx_output(left)
                         yield self.await_port_input(self.node.ports[self.c_port])
