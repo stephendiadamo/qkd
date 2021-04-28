@@ -1,1 +1,1 @@
-from .b92 import KeySenderProtocol, KeyReceiverProtocol
+from .b92_realistic import KeySenderProtocol, KeyReceiverProtocol

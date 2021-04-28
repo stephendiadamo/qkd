@@ -1,9 +1,12 @@
 import time
 
 import netsquid.components.instructions as instr
+import netsquid as ns
 import numpy as np
 from netsquid.components import QuantumProgram, SourceStatus
 from netsquid.protocols import NodeProtocol, Signals
+
+from qkd.networks import TwoPartyNetwork
 
 
 class EncodeQubitProgram(QuantumProgram):
@@ -44,14 +47,19 @@ class KeyReceiverProtocol(NodeProtocol):
         results = []
         qubits_received = 0
         matched_indices = []
+
         def record_measurement(msg):
-            if msg.items[0] == 1:
-                    matched_indices.append(qubits_received)
-                    results.append(1)
-        def record_measurement1(msg):
+            nonlocal qubits_received
             if msg.items[0] == 1:
                 matched_indices.append(qubits_received)
                 results.append(0)
+
+        def record_measurement1(msg):
+            nonlocal qubits_received
+            if msg.items[0] == 1:
+                matched_indices.append(qubits_received)
+                results.append(1)
+
         def measure_qubit(message):
             nonlocal qubits_received
             if bases[qubits_received] == 0:
@@ -64,7 +72,8 @@ class KeyReceiverProtocol(NodeProtocol):
         self.node.qmemory.subcomponents['qubit_detector_z'].ports['cout0'].bind_output_handler(record_measurement)
         self.node.qmemory.subcomponents['qubit_detector_x'].ports['cout0'].bind_output_handler(record_measurement1)
 
-    
+        yield self.await_port_input(self.node.ports[self.c_port])
+
         final_key = []
 
         for i in matched_indices:
@@ -72,7 +81,7 @@ class KeyReceiverProtocol(NodeProtocol):
                 final_key.append(results[i])
 
         self.key = final_key
-        self.node.ports[self.c_port].tx_output(kept_indices)
+        self.node.ports[self.c_port].tx_output(matched_indices)
         self.send_signal(signal_label=Signals.SUCCESS, result=final_key)
 
 
@@ -115,8 +124,7 @@ class KeySenderProtocol(NodeProtocol):
 
         # Await response from Bob
         yield self.await_port_input(self.node.ports[self.c_port])
-        kept_indices = self.node.ports[self.c_port].rx_input().items[0]
-       
+        kept_indices = self.node.ports[self.c_port].rx_input().items
 
         self.node.ports[self.c_port].tx_output(kept_indices[:-1])
         final_key = []
@@ -127,6 +135,20 @@ class KeySenderProtocol(NodeProtocol):
 
 
 if __name__ == '__main__':
-    start = time.time()
+    n = TwoPartyNetwork('net', 0, 0, 10, t_time={'T1': 110, 'T2': 100}, loss=(0, 0)).generate_noisy_network()
+    node_a = n.get_node("alice")
+    node_b = n.get_node("bob")
 
-    print(f'Finished in {time.time() - start} seconds.')
+    p1 = KeySenderProtocol(node_a, key_size=200)
+    p2 = KeyReceiverProtocol(node_b, key_size=200)
+
+    p1.start()
+    p2.start()
+
+    # ns.logger.setLevel(4)
+
+    stats = ns.sim_run()
+
+    print(len(p1.key))
+    print(p1.key)
+    print(p2.key)
