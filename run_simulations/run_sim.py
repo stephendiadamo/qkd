@@ -12,7 +12,6 @@ bob_keys = []
 alice_keys = []
 bob_corrected_keys = []
 
-
 def run_e91_experiment(correction=True):
     protocols = [E91Sender, E91Receiver]
     return run_experiment(protocols,
@@ -114,10 +113,10 @@ def plot_key_length_vs_length(protocols, runs=100):
     plt.show()
 
 
-def plot_fibre_length_experiment(protocols, sim_type='matched', runs=15):
-    lengths = np.linspace(100, 3000, 5)
-    phases = [0.25, 0.5]
-    key_size = 300
+def plot_fibre_length_experiment(protocols, sim_type='match', runs=50):
+    lengths = np.linspace(100, 5000, 6)
+    phases = [0.05, 0.1, 0.15]
+    key_size = 200
     for phase in phases:
         data = []
         for length in lengths:
@@ -128,30 +127,41 @@ def plot_fibre_length_experiment(protocols, sim_type='matched', runs=15):
                 fibre_length=length,
                 dephase_rate=phase,
                 key_size=key_size,
-                loss=(0.00, 0.001),
+                loss=(0.00, 0.00001),
                 runs=runs,
+                correction=True,
                 t_time={'T1': 11, 'T2': 10},
                 q_source_probs=[1., 0.]))
-        if sim_type == 'matched':
+        if sim_type == 'match':
             correct_keys = [d['MATCHED_KEYS'] / runs for d in data]
             plt.plot([l / 1000 for l in lengths], correct_keys,
                      marker='.',
                      linestyle='solid',
                      label=f'Dephase Rate={"%.2f" % phase}')
+            rec_correct_keys = [d['CORRECTED_MATCHED'] / runs for d in data]
+            plt.plot([l / 1000 for l in lengths], rec_correct_keys,
+                     marker='.',
+                     linestyle='dashed',
+                     label=f'Dephase Rate={"%.2f" % phase}')
         elif sim_type == 'qber':
             qbers = [d['AVG_QBER'] for d in data]
+            rec_qbers = [d['REC_AVG_QBER'] for d in data]
             plt.plot([l / 1000 for l in lengths], qbers,
                      marker='.',
                      linestyle='solid',
                      label=f'Dephase Rate={"%.2f" % phase}')
-        ax = plt.gca()
-        line = ax.lines[-1]
-        print(line.get_xydata())
+            plt.plot([l / 1000 for l in lengths], rec_qbers,
+                     marker='.',
+                     linestyle='dashed',
+                     label=f'Dephase Rate={"%.2f" % phase}')
+        # ax = plt.gca()
+        # line = ax.lines[-1]
+        # print(line.get_xydata())
 
     plt.title(f'Key Distribution Efficiency Over Fibre: Key size {key_size}')
     plt.ylim(0, 1.1)
     plt.xlabel('Length (km)')
-    if sim_type == 'matched':
+    if sim_type == 'match':
         plt.ylabel('Percentage of correctly transmitted keys')
     elif sim_type == 'qber':
         plt.ylabel('Bit Error Rate')
@@ -219,7 +229,13 @@ def run_experiment(protocols, fibre_length, dephase_rate, key_size, t_time=None,
                 matched += 1
         return 1 - (matched / len(key1))
 
-    _stats = {'MISMATCHED_KEYS': 0, 'MATCHED_KEYS': 0, 'CORRECTED_MATCHED': 0, 'AVG_QBER': 0}
+    _stats = {'MISMATCHED_KEYS': 0,
+              'MATCHED_KEYS': 0,
+              'CORRECTED_MATCHED': 0,
+              'AVG_QBER': 0,
+              'REC_AVG_QBER': 0
+              }
+
     for i, bob_key in enumerate(bob_keys):
         alice_key = alice_keys[i]
         if not keys_match(alice_key, bob_key):
@@ -232,6 +248,7 @@ def run_experiment(protocols, fibre_length, dephase_rate, key_size, t_time=None,
         alice_key = alice_keys[i]
         if keys_match(alice_key, bob_key):
             _stats['CORRECTED_MATCHED'] += 1
+        _stats['REC_AVG_QBER'] += qber(bob_key, alice_key) / len(bob_keys)
     _stats['AVG_QBER'] = int(1e5 * _stats['AVG_QBER']) / 1e5
     return _stats
 
@@ -239,5 +256,6 @@ def run_experiment(protocols, fibre_length, dephase_rate, key_size, t_time=None,
 if __name__ == "__main__":
     # print(run_e91_experiment())
     # print(run_bb84_experiment())
-    print(run_b92_experiment())
-    # plot_fibre_length_experiment([E91Sender, E91Receiver], sim_type='qber')
+    # print(run_b92_experiment())
+    # plot_fibre_length_experiment([BB84Sender, BB84Receiver], sim_type='qber')
+    plot_fibre_length_experiment([E91Sender, E91Receiver], sim_type='match')
